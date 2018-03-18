@@ -1,0 +1,10 @@
+[package]
+name = "automaton_test"
+version = "0.1.0"
+authors = ["Bert Proesmans <bproesmans@hotmail.com>"]
+
+[dependencies]
+
+
+[dev-dependencies]
+clippy = { version = "*" }
