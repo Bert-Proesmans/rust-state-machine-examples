@@ -163,7 +163,7 @@ impl TopLevelState for Finished {}
 // Utility implementation for 0-sized transactions, the type `()`.
 impl Transaction for () {}
 
-/* Machine<WaitableState<Start>> -> Machine<WaitableState<Input>> */
+/* Machine<Wait<Start>> -> Machine<Wait<Input>> */
 impl TransitionFrom<Machine<Wait<Start>>> for Machine<Wait<Input>> {
     fn transition_from(old: Machine<Wait<Start>>, t: <Self::State as State>::Transaction) -> Self {
         Machine {
@@ -175,7 +175,7 @@ impl TransitionFrom<Machine<Wait<Start>>> for Machine<Wait<Input>> {
     }
 }
 
-/* Machine<WaitableState<Input>> -> Machine<Finished> */
+/* Machine<Wait<Input>> -> Machine<Finished> */
 impl TransitionFrom<Machine<Wait<Input>>> for Machine<Finished> {
     fn transition_from(old: Machine<Wait<Input>>, t: <Self::State as State>::Transaction) -> Self {
         Machine {
