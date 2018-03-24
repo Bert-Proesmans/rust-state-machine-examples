@@ -4,9 +4,6 @@ version = "0.1.0"
 authors = ["Bert Proesmans <bproesmans@hotmail.com>"]
 
 [dependencies]
-serde = "1.0"
-serde_derive = "1.0"
-bincode = "1.0.0"
 
 [dev-dependencies]
 clippy = { version = "*" }
