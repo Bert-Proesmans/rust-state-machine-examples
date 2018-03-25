@@ -363,23 +363,23 @@ impl TransitionFrom<Machine<Wait<Input>>> for Machine<Finished> {
 
 /* Machine<Wait<Input>> <-> Machine<Action<Print>> */
 impl PushdownFrom<Machine<Wait<Input>>, TransactionItem> for Machine<Action<Print>> {
-    fn pushdown_from(old: Machine<Wait<Input>>, t: <Self::State as State>::Transaction) -> Self {
+    fn pushdown_from(
+        mut old: Machine<Wait<Input>>,
+        t: <Self::State as State>::Transaction,
+    ) -> Self {
+        // Archive state of the old machine.
+        let old_transaction: TransactionItem = pack_transaction(old.transaction);
+        ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
+            .push(old_transaction)
+            .expect("Never type triggered!");
+
         // Build new machine.
-        let mut new = Machine {
+        Machine {
             state: PhantomData,
             transaction: t,
             // Following properties MUST stay in sync with `Machine` !
             storage: old.storage,
-        };
-
-        // Archive state of the old machine.
-        let old_transaction: TransactionItem = pack_transaction(old.transaction);
-        new.storage
-            .push(old_transaction)
-            .expect("Never type triggered!");
-
-        // Return new machine.
-        new
+        }
     }
 }
 
@@ -387,7 +387,9 @@ impl PushdownFrom<Machine<Wait<Input>>, TransactionItem> for Machine<Action<Prin
 impl PullupFrom<Machine<Action<Print>>, TransactionItem> for Machine<Wait<Input>> {
     fn pullup_from(mut old: Machine<Action<Print>>) -> Result<Self, String> {
         // Restore previously stored state.
-        let old_transaction = old.storage.pop().and_then(unpack_transaction)?;
+        let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
+            .pop()
+            .and_then(unpack_transaction)?;
 
         // Build new machine.
         Ok(Machine {
@@ -401,23 +403,23 @@ impl PullupFrom<Machine<Action<Print>>, TransactionItem> for Machine<Wait<Input>
 
 /* Machine<Action<Print>> <-> Machine<Action<Load>> */
 impl PushdownFrom<Machine<Action<Print>>, TransactionItem> for Machine<Action<Load>> {
-    fn pushdown_from(old: Machine<Action<Print>>, t: <Self::State as State>::Transaction) -> Self {
+    fn pushdown_from(
+        mut old: Machine<Action<Print>>,
+        t: <Self::State as State>::Transaction,
+    ) -> Self {
+        // Archive state of the old machine.
+        let old_transaction: TransactionItem = pack_transaction(old.transaction);
+        ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
+            .push(old_transaction)
+            .expect("Never type triggered!");
+
         // Build new machine.
-        let mut new = Machine {
+        Machine {
             state: PhantomData,
             transaction: t,
             // Following properties MUST stay in sync with `Machine` !
             storage: old.storage,
-        };
-
-        // Archive state of the old machine.
-        let old_transaction: TransactionItem = pack_transaction(old.transaction);
-        new.storage
-            .push(old_transaction)
-            .expect("Never type triggered!");
-
-        // Return new machine.
-        new
+        }
     }
 }
 
@@ -425,7 +427,9 @@ impl PushdownFrom<Machine<Action<Print>>, TransactionItem> for Machine<Action<Lo
 impl PullupFrom<Machine<Action<Load>>, TransactionItem> for Machine<Action<Print>> {
     fn pullup_from(mut old: Machine<Action<Load>>) -> Result<Self, String> {
         // Restore previously stored state.
-        let old_transaction = old.storage.pop().and_then(unpack_transaction)?;
+        let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
+            .pop()
+            .and_then(unpack_transaction)?;
 
         // Build new machine.
         Ok(Machine {
