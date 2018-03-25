@@ -1,9 +1,12 @@
 // Linters
-#![allow(dead_code, unused_mut, unused_variables, let_and_return)]
+#![allow(dead_code, unused_mut, unused_variables, let_and_return, useless_format)]
 // Unstable features
 #![feature(associated_type_defaults, universal_impl_trait, try_from, never_type)]
 #![cfg_attr(test, feature(plugin))]
 #![cfg_attr(test, plugin(clippy))]
+
+#[macro_use]
+extern crate failure;
 
 pub mod function {
     use marker::Service;
@@ -69,6 +72,8 @@ pub mod marker {
 }
 
 pub mod stm {
+    use failure::Error;
+
     use function::{ServiceCompliance, State, StateContainer};
     use marker::{Transaction, TransactionContainer};
     use service::StackStorage;
@@ -102,11 +107,13 @@ pub mod stm {
         Self::State: State,
         <Self::State as State>::Transaction: Transaction + 'static,
     {
-        fn pullup_from(_: T) -> Result<Self, String>;
+        fn pullup_from(_: T) -> Result<Self, Error>;
     }
 }
 
 pub mod service {
+    use failure::Error;
+
     use marker::{Service, TransactionContainer};
 
     //////////////
@@ -135,8 +142,10 @@ pub mod service {
             Ok(())
         }
 
-        pub fn pop(&mut self) -> Result<A, String> {
-            self.tape.pop().ok_or_else(|| "Popped too many!".into())
+        pub fn pop(&mut self) -> Result<A, Error> {
+            self.tape
+                .pop()
+                .ok_or_else(|| format_err!("Popped too many!"))
         }
     }
 }
@@ -230,6 +239,8 @@ pub mod state {
 pub mod transaction {
     use std::convert::TryFrom;
 
+    use failure::Error;
+
     use marker::{Transaction, TransactionContainer};
     //////////////////
     // Transactions //
@@ -254,12 +265,12 @@ pub mod transaction {
     }
 
     impl TryFrom<TransactionItem> for Epsilon {
-        type Error = String;
+        type Error = Error;
 
         fn try_from(tc: TransactionItem) -> Result<Self, Self::Error> {
             match tc {
                 TransactionItem::Epsilon(x) => Ok(x),
-                _ => Err("Unexpected item".into()),
+                _ => Err(format_err!("Unexpected item")),
             }
         }
     }
@@ -275,18 +286,20 @@ pub mod transaction {
     }
 
     impl TryFrom<TransactionItem> for PrintTransaction {
-        type Error = String;
+        type Error = Error;
 
         fn try_from(tc: TransactionItem) -> Result<Self, Self::Error> {
             match tc {
                 TransactionItem::Print(x) => Ok(x),
-                _ => Err("Unexpected item".into()),
+                _ => Err(format_err!("Unexpected item")),
             }
         }
     }
 }
 
 use std::marker::PhantomData;
+
+use failure::Error;
 
 use function::{ServiceCompliance, State, StateContainer};
 use function::helper::{pack_transaction, unpack_transaction};
@@ -385,7 +398,7 @@ impl PushdownFrom<Machine<Wait<Input>>, TransactionItem> for Machine<Action<Prin
 
 /* Machine<Wait<Input>> <-> Machine<Action<Print>> */
 impl PullupFrom<Machine<Action<Print>>, TransactionItem> for Machine<Wait<Input>> {
-    fn pullup_from(mut old: Machine<Action<Print>>) -> Result<Self, String> {
+    fn pullup_from(mut old: Machine<Action<Print>>) -> Result<Self, Error> {
         // Restore previously stored state.
         let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
             .pop()
@@ -425,7 +438,7 @@ impl PushdownFrom<Machine<Action<Print>>, TransactionItem> for Machine<Action<Lo
 
 /* Machine<Action<Print>> <-> Machine<Action<Load>> */
 impl PullupFrom<Machine<Action<Load>>, TransactionItem> for Machine<Action<Print>> {
-    fn pullup_from(mut old: Machine<Action<Load>>) -> Result<Self, String> {
+    fn pullup_from(mut old: Machine<Action<Load>>) -> Result<Self, Error> {
         // Restore previously stored state.
         let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
             .pop()
