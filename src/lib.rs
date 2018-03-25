@@ -66,9 +66,9 @@ pub mod marker {
 
     pub trait Service {}
 
-    pub trait TopLevelState {}
-    pub trait WaitableState {}
-    pub trait ActionableState {}
+    pub trait TopLevelMarker {}
+    pub trait WaitableMarker {}
+    pub trait ActionableMarker {}
 }
 
 pub mod stm {
@@ -152,7 +152,7 @@ pub mod service {
 
 pub mod state {
     use function::State;
-    use marker::{ActionableState, TopLevelState, WaitableState};
+    use marker::{ActionableMarker, TopLevelMarker, WaitableMarker};
     use transaction::{Epsilon, PrintTransaction};
 
     ///////////////////
@@ -160,16 +160,16 @@ pub mod state {
     ///////////////////
 
     #[derive(Debug)]
-    pub struct Wait<W: WaitableState>(W);
+    pub struct Wait<W: WaitableMarker>(W);
     impl<W> State for Wait<W>
     where
-        W: WaitableState + State,
+        W: WaitableMarker + State,
     {
         type Transaction = W::Transaction;
     }
-    impl<W> TopLevelState for Wait<W>
+    impl<W> TopLevelMarker for Wait<W>
     where
-        W: WaitableState,
+        W: WaitableMarker,
     {
     }
 
@@ -179,7 +179,7 @@ pub mod state {
     impl State for Start {
         type Transaction = Epsilon;
     }
-    impl WaitableState for Start {}
+    impl WaitableMarker for Start {}
 
     //
     #[derive(Debug)]
@@ -187,23 +187,23 @@ pub mod state {
     impl State for Input {
         type Transaction = Epsilon;
     }
-    impl WaitableState for Input {}
+    impl WaitableMarker for Input {}
 
     /////////////////////
     // Toplevel ACTION //
     /////////////////////
 
     #[derive(Debug)]
-    pub struct Action<A: ActionableState>(A);
+    pub struct Action<A: ActionableMarker>(A);
     impl<A> State for Action<A>
     where
-        A: ActionableState + State,
+        A: ActionableMarker + State,
     {
         type Transaction = A::Transaction;
     }
-    impl<A> TopLevelState for Action<A>
+    impl<A> TopLevelMarker for Action<A>
     where
-        A: ActionableState,
+        A: ActionableMarker,
     {
     }
 
@@ -213,7 +213,7 @@ pub mod state {
     impl State for Load {
         type Transaction = Epsilon;
     }
-    impl ActionableState for Load {}
+    impl ActionableMarker for Load {}
 
     //
     #[derive(Debug)]
@@ -222,7 +222,7 @@ pub mod state {
         // !-- See below *Transactions --!
         type Transaction = PrintTransaction;
     }
-    impl ActionableState for Print {}
+    impl ActionableMarker for Print {}
 
     ///////////////////////
     // Toplevel FINISHED //
@@ -233,7 +233,7 @@ pub mod state {
     impl State for Finished {
         type Transaction = Epsilon;
     }
-    impl TopLevelState for Finished {}
+    impl TopLevelMarker for Finished {}
 }
 
 pub mod transaction {
@@ -303,7 +303,7 @@ use failure::Error;
 
 use function::{ServiceCompliance, State, StateContainer};
 use function::helper::{pack_transaction, unpack_transaction};
-use marker::TopLevelState;
+use marker::TopLevelMarker;
 use service::StackStorage;
 use stm::{PullupFrom, PushdownFrom, TransitionFrom};
 use transaction::TransactionItem;
@@ -316,7 +316,7 @@ use state::*;
 #[derive(Debug)]
 pub struct Machine<X>
 where
-    X: TopLevelState + State,
+    X: TopLevelMarker + State,
 {
     /* Absolute minimum variables */
     pub state: PhantomData<X>,
@@ -328,14 +328,14 @@ where
 
 impl<X> StateContainer for Machine<X>
 where
-    X: TopLevelState + State,
+    X: TopLevelMarker + State,
 {
     type State = X;
 }
 
 impl<X> ServiceCompliance<StackStorage<TransactionItem>> for Machine<X>
 where
-    X: TopLevelState + State,
+    X: TopLevelMarker + State,
 {
     fn get(&self) -> &StackStorage<TransactionItem> {
         &self.storage
