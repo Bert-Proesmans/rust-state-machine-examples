@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["helper","Core functionality helper methods."]],"trait":[["ServiceCompliance","Trait for implementing a certain service on the state machine."],["State","Trait generalizing over any state that's present in the state machine."],["StateContainer","Trait generalizing over any structure that could act as a container of states."]]});
