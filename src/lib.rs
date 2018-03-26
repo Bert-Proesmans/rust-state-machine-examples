@@ -27,6 +27,7 @@ pub mod function {
     pub trait ServiceCompliance<S>
     where
         S: Service,
+        Self: StateContainer
     {
         fn get(&self) -> &S;
         fn get_mut(&mut self) -> &mut S;
