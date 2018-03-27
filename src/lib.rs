@@ -24,12 +24,6 @@ pub mod function {
     //! Contains the core functionality items for our system.
     use marker::Service;
 
-    ////////////////
-    // Interfaces //
-    ////////////////
-
-    /* Functionality traits */
-
     /// Trait generalizing over any structure that could act as a container of states.
     /// 
     /// This container of states could be reworded as 'the state machine' itself.
@@ -58,6 +52,114 @@ pub mod function {
         fn get(&self) -> &S;
         /// Retrieves a mutable reference to service `S`.
         fn get_mut(&mut self) -> &mut S;
+    }
+
+    pub mod error {
+        //! Types, to be used within the system, providing context of unexpected behaviour.
+
+        use std::fmt::{self, Display, Debug, Formatter};
+        use std::string::ToString;
+
+        use failure::{Fail, Backtrace, Context};
+
+        use super::StateContainer;
+        
+        /// User facing error type indicating an issue ocurred during evalutation of any
+        /// state machine processes.
+        /// 
+        /// This structure should be used to create an error that is presented to the end-user
+        /// or external systems. It carries a snapshot of the state-machine at the moment 
+        /// the error occurred.
+        #[derive(Debug)]
+        pub struct MachineError
+        {
+            machine: Box<(Debug + Send + Sync)>,
+            inner: Context<ErrorKind>,
+        }
+
+        impl Fail for MachineError {
+            fn cause(&self) -> Option<&Fail> {
+                self.inner.cause()
+            }
+
+            fn backtrace(&self) -> Option<&Backtrace> {
+                self.inner.backtrace()
+            }
+        }
+
+        impl Display for MachineError {
+            fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+                Display::fmt(&self.inner, f)
+            }
+        }
+
+        /// Enumeration of publicl cases of state machine failures.
+        #[derive(Debug, Fail, Copy, Clone, Eq, PartialEq)]
+        pub enum ErrorKind {
+            /// Error indicating some constraint failed to assert at runtime.
+            #[fail(display = "An operation failed to meet required constraints")]
+            ConstraintError,
+            /// Error indicating the developer has introduced a logic error in
+            /// his code.
+            #[fail(display = "A logical error ocurred")]
+            LogicError,
+        }
+
+        /// Trait facilitating error creation with a snapshot of the state machine 
+        /// attached.
+        pub trait SnapshottedErrorExt<T> {
+            /// Converts the Error type of a [`Result`] object into a [`MachineError`].
+            fn with_snapshot<M>(self, context: ErrorKind, machine: M) -> Result<T, MachineError> 
+            where 
+                M: StateContainer + Sized + Debug + Sync + Send + 'static;
+        }
+
+        impl<T, E> SnapshottedErrorExt<T> for Result<T, E> 
+        where 
+            E: Fail,
+        {
+            /// Builds a [`MachineError`] from a specified [`ErrorKind`]
+            /// providing a snapshot of the current state machine.
+            fn with_snapshot<M>(self, context: ErrorKind, machine: M) -> Result<T, MachineError> 
+            where 
+                M: StateContainer + Sized + Debug + Sync + Send + 'static,
+            {
+                self.map_err(move |failure| {
+                    // Build and return custom error type
+                    MachineError {
+                        machine: Box::new(machine),
+                        // Build new context for our own error kind.
+                        // and chain the previous one..
+                        inner: failure.context(context),
+                    }
+                })
+            }
+        }
+
+        /// Type used for indicating failure to meet specified constraints.
+        #[derive(Debug, Fail)]
+        #[fail(display = "Constraint violation detected! Expected `{:}`, provided `{:}`", expected, factual)]
+        pub struct RuntimeConstraintError
+        {
+            /// Value defining the constraint.
+            expected: String,
+            /// Value which fails to meet the constraint.
+            factual: String,
+        }
+
+        impl<S1, S2> From<(S1, S2)> for RuntimeConstraintError
+        where
+            S1: ToString,
+            S2: ToString,
+        {
+            fn from(x: (S1, S2)) -> Self {
+                let (expected, factual) = x;
+                RuntimeConstraintError {
+                    expected: expected.to_string(),
+                    factual: factual.to_string(),
+                }
+            }
+        }
     }
 
     pub mod helper {
@@ -127,9 +229,8 @@ pub mod marker {
 
 pub mod stm {
     //! Traits enforcing state machine behaviour.
-    use failure::Error;
 
-    use function::{ServiceCompliance, State, StateContainer};
+    use function::{ServiceCompliance, State, StateContainer, error::MachineError};
     use marker::{Transaction, TransactionContainer};
     use service::StackStorage;
 
@@ -198,19 +299,25 @@ pub mod stm {
         /// There is a check at runtime which prevents a Pullup transition if it doesn't match
         /// the correct PushDown transition in a First In, Last Out (FILO) manner.
         /// Note: This part CANNOT be statically verified as far as I know?
-        fn pullup_from(_: T) -> Result<Self, Error>;
+        fn pullup_from(_: T) -> Result<Self, MachineError>;
     }
 }
 
 pub mod service {
     //! Types which attribute functionality to state machines.
-    use failure::Error;
 
     use marker::{Service, TransactionContainer};
+    use self::error::StackPopError;
 
-    //////////////
-    // Services //
-    //////////////
+    pub mod error {
+        //! Types for simplifying error handling syntax.
+
+        /// Specific error thrown when the [`StackStorage`] has no items left
+        /// and the users coded it to pop another item.
+        #[derive(Debug, Fail)]
+        #[fail(display = "Popped too many times!")]
+        pub struct StackPopError;
+    }
 
     /// Structure wrapping a Vector type to provide a simple Stack interface.
     #[derive(Debug)]
@@ -242,10 +349,10 @@ pub mod service {
         /// 
         /// The popped value will match the value which was pushed last
         /// before executing this method.
-        pub fn pop(&mut self) -> Result<A, Error> {
+        pub fn pop(&mut self) -> Result<A, StackPopError> {
             self.tape
                 .pop()
-                .ok_or_else(|| format_err!("Popped too many!"))
+                .ok_or(StackPopError)
         }
     }
 }
@@ -356,13 +463,8 @@ pub mod transaction {
 
     use std::convert::TryFrom;
 
-    use failure::Error;
-
+    use function::error::RuntimeConstraintError;
     use marker::{Transaction, TransactionContainer};
-
-    //////////////////
-    // Transactions //
-    //////////////////
 
     /// Collection of known Transaction structures wrapped into a Sized
     /// item.
@@ -393,12 +495,16 @@ pub mod transaction {
     }
 
     impl TryFrom<TransactionItem> for Epsilon {
-        type Error = Error;
+        type Error = RuntimeConstraintError;
 
         fn try_from(tc: TransactionItem) -> Result<Self, Self::Error> {
             match tc {
                 TransactionItem::Epsilon(x) => Ok(x),
-                _ => Err(format_err!("Unexpected item")),
+                e @ _ => {
+                    let expected = stringify!(TransactionItem::Epsilon).into();
+                    let factual = format!("{:?}", e);
+                    Err((expected, factual).into())
+                },
             }
         }
     }
@@ -418,12 +524,16 @@ pub mod transaction {
     }
 
     impl TryFrom<TransactionItem> for PrintTransaction {
-        type Error = Error;
+        type Error = RuntimeConstraintError;
 
         fn try_from(tc: TransactionItem) -> Result<Self, Self::Error> {
             match tc {
                 TransactionItem::Print(x) => Ok(x),
-                _ => Err(format_err!("Unexpected item")),
+                e @ _ => {
+                    let expected = stringify!(TransactionItem::Print).into();
+                    let factual = format!("{:?}", e);
+                    Err((expected, factual).into())
+                },
             }
         }
     }
@@ -431,14 +541,13 @@ pub mod transaction {
 
 use std::marker::PhantomData;
 
-use failure::Error;
-
 use function::{ServiceCompliance, State, StateContainer};
+use function::error::{MachineError, SnapshottedErrorExt, ErrorKind};
 use function::helper::{pack_transaction, unpack_transaction};
 use marker::TopLevelMarker;
 use service::StackStorage;
 use stm::{PullupFrom, PushdownFrom, TransitionFrom};
-use transaction::TransactionItem;
+use transaction::{TransactionItem, Epsilon, PrintTransaction};
 use state::*;
 
 /////////////////////
@@ -545,11 +654,15 @@ impl PushdownFrom<Machine<Wait<Input>>, TransactionItem> for Machine<Action<Prin
 
 /* Machine<Wait<Input>> <-> Machine<Action<Print>> */
 impl PullupFrom<Machine<Action<Print>>, TransactionItem> for Machine<Wait<Input>> {
-    fn pullup_from(mut old: Machine<Action<Print>>) -> Result<Self, Error> {
+    fn pullup_from(mut old: Machine<Action<Print>>) -> Result<Self, MachineError> {
         // Restore previously stored state.
         let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
-            .pop()
-            .and_then(unpack_transaction)?;
+            .pop().with_snapshot(ErrorKind::LogicError, old)?;
+        let old_transaction = unpack_transaction(old_transaction)
+            .with_snapshot(ErrorKind::ConstraintError, old)?;
+
+        // DBG
+        // let old_transaction = Epsilon;
 
         // Build new machine.
         Ok(Machine {
@@ -585,11 +698,14 @@ impl PushdownFrom<Machine<Action<Print>>, TransactionItem> for Machine<Action<Lo
 
 /* Machine<Action<Print>> <-> Machine<Action<Load>> */
 impl PullupFrom<Machine<Action<Load>>, TransactionItem> for Machine<Action<Print>> {
-    fn pullup_from(mut old: Machine<Action<Load>>) -> Result<Self, Error> {
+    fn pullup_from(mut old: Machine<Action<Load>>) -> Result<Self, MachineError> {
         // Restore previously stored state.
-        let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
-            .pop()
-            .and_then(unpack_transaction)?;
+        // let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
+        //     .pop()
+        //     .and_then(unpack_transaction)?;
+
+        // DBG
+        let old_transaction = PrintTransaction("dbg");
 
         // Build new machine.
         Ok(Machine {
