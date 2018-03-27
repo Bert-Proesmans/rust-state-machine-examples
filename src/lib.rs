@@ -109,9 +109,9 @@ pub mod function {
         /// attached.
         pub trait SnapshottedErrorExt<T> {
             /// Converts the Error type of a [`Result`] object into a [`MachineError`].
-            fn with_snapshot<M>(self, context: ErrorKind, machine: M) -> Result<T, MachineError> 
+            fn with_snapshot<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError> 
             where 
-                M: StateContainer + Sized + Debug + Sync + Send + 'static;
+                M: StateContainer + Clone + Debug + Sync + Send + 'static;
         }
 
         impl<T, E> SnapshottedErrorExt<T> for Result<T, E> 
@@ -120,14 +120,14 @@ pub mod function {
         {
             /// Builds a [`MachineError`] from a specified [`ErrorKind`]
             /// providing a snapshot of the current state machine.
-            fn with_snapshot<M>(self, context: ErrorKind, machine: M) -> Result<T, MachineError> 
+            fn with_snapshot<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError> 
             where 
-                M: StateContainer + Sized + Debug + Sync + Send + 'static,
+                M: StateContainer + Clone + Debug + Sync + Send + 'static,
             {
                 self.map_err(move |failure| {
                     // Build and return custom error type
                     MachineError {
-                        machine: Box::new(machine),
+                        machine: Box::new(machine.clone()),
                         // Build new context for our own error kind.
                         // and chain the previous one..
                         inner: failure.context(context),
@@ -320,7 +320,7 @@ pub mod service {
     }
 
     /// Structure wrapping a Vector type to provide a simple Stack interface.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct StackStorage<A>
     where
         A: TransactionContainer,
@@ -369,7 +369,7 @@ pub mod state {
     ///////////////////
 
     /// State indicating a pause until an input event has been generated.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Wait<W: WaitableMarker>(W);
     impl<W> State for Wait<W>
     where
@@ -385,7 +385,7 @@ pub mod state {
     }
 
     /// Wait condition state until the game has been started.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Start();
     impl State for Start {
         type Transaction = Epsilon;
@@ -394,7 +394,7 @@ pub mod state {
     impl WaitableMarker for Start {}
 
     /// Wait condition state until the user has provided input.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Input();
     impl State for Input {
         type Transaction = Epsilon;
@@ -407,7 +407,7 @@ pub mod state {
     /////////////////////
 
     /// State indicating dynamic execution of the specific action is in progress.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Action<A: ActionableMarker>(A);
     impl<A> State for Action<A>
     where
@@ -423,7 +423,7 @@ pub mod state {
     }
 
     /// Action condition state indicating loading is in progress.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Load();
     impl State for Load {
         type Transaction = Epsilon;
@@ -432,7 +432,7 @@ pub mod state {
     impl ActionableMarker for Load {}
 
     /// Action condition state indicating printing is in progress.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Print();
     impl State for Print {
         // !-- See below *Transactions --!
@@ -449,7 +449,7 @@ pub mod state {
     /// 
     /// Finished CAN NOT have any outgoing transitions, since it's intended
     /// to be a terminal state.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Finished();
     impl State for Finished {
         type Transaction = Epsilon;
@@ -468,7 +468,7 @@ pub mod transaction {
 
     /// Collection of known Transaction structures wrapped into a Sized
     /// item.
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum TransactionItem {
         /// See [`Epsilon`]
         Epsilon(Epsilon),
@@ -501,7 +501,7 @@ pub mod transaction {
             match tc {
                 TransactionItem::Epsilon(x) => Ok(x),
                 e @ _ => {
-                    let expected = stringify!(TransactionItem::Epsilon).into();
+                    let expected = stringify!(TransactionItem::Epsilon);
                     let factual = format!("{:?}", e);
                     Err((expected, factual).into())
                 },
@@ -530,7 +530,7 @@ pub mod transaction {
             match tc {
                 TransactionItem::Print(x) => Ok(x),
                 e @ _ => {
-                    let expected = stringify!(TransactionItem::Print).into();
+                    let expected = stringify!(TransactionItem::Print);
                     let factual = format!("{:?}", e);
                     Err((expected, factual).into())
                 },
@@ -560,7 +560,7 @@ use state::*;
 /// way by storing services into it's members.
 /// Each state machine MUST have a `state` and `transaction` field AT
 /// MINIMUM.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Machine<X>
 where
     X: TopLevelMarker + State,
@@ -657,9 +657,9 @@ impl PullupFrom<Machine<Action<Print>>, TransactionItem> for Machine<Wait<Input>
     fn pullup_from(mut old: Machine<Action<Print>>) -> Result<Self, MachineError> {
         // Restore previously stored state.
         let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
-            .pop().with_snapshot(ErrorKind::LogicError, old)?;
+            .pop().with_snapshot(ErrorKind::LogicError, &old)?;
         let old_transaction = unpack_transaction(old_transaction)
-            .with_snapshot(ErrorKind::ConstraintError, old)?;
+            .with_snapshot(ErrorKind::ConstraintError, &old)?;
 
         // DBG
         // let old_transaction = Epsilon;
