@@ -3,7 +3,7 @@
 // Prevent successful compilation when documentation is missing.
 #![deny(missing_docs)]
 // Unstable features.
-#![feature(associated_type_defaults, universal_impl_trait, try_from, never_type)]
+#![feature(associated_type_defaults, try_from, never_type)]
 // Clippy linting when building debug versions.
 #![cfg_attr(test, feature(plugin))]
 #![cfg_attr(test, plugin(clippy))]
