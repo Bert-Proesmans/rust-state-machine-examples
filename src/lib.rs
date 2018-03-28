@@ -106,16 +106,6 @@ pub mod function {
         /// Trait facilitating error creation with a snapshot of the state machine
         /// attached.
         pub trait SnapshottedErrorExt<T> {
-            /// Converts the Error type of a [`Result`] object into a [`MachineError`].
-            fn context<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError>
-            where
-                M: StateContainer + Clone + Debug + Sync + Send + 'static;
-        }
-
-        impl<T, E> SnapshottedErrorExt<T> for Result<T, E>
-        where
-            E: Fail,
-        {
             /// Builds a [`MachineError`] from some error.
             /// 
             /// # Constraints
@@ -128,6 +118,15 @@ pub mod function {
             /// machine [´StateContainer`] - is ment to store (effectively through [`Clone`]) a
             /// snapshot of the state machine onto the heap. The stored state machine will be an exact
             /// copy of the real one at the moment of failure.
+            fn context<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError>
+            where
+                M: StateContainer + Clone + Debug + Sync + Send + 'static;
+        }
+
+        impl<T, E> SnapshottedErrorExt<T> for Result<T, E>
+        where
+            E: Fail,
+        {
             fn context<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError>
             where
                 M: StateContainer + Clone + Debug + Sync + Send + 'static,
