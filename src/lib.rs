@@ -10,7 +10,6 @@
 // Linters for code residing in documentation.
 #![doc(test(attr(allow(unused_variables), deny(warnings))))]
 
-
 //! Project intended for incremental building of a state machine.
 //! The intention is to make every language item presented to the developer
 //! as explicit as possible. While still allowing some degree of dynamic
@@ -25,7 +24,7 @@ pub mod function {
     use marker::Service;
 
     /// Trait generalizing over any structure that could act as a container of states.
-    /// 
+    ///
     /// This container of states could be reworded as 'the state machine' itself.
     pub trait StateContainer {
         /// Type of the current state held by the state machine.
@@ -40,13 +39,13 @@ pub mod function {
     }
 
     /// Trait for implementing a certain service on the state machine.
-    /// 
-    /// Because of this design exactly one object of each service type can be hooked onto 
+    ///
+    /// Because of this design exactly one object of each service type can be hooked onto
     /// the same state machine.
     pub trait ServiceCompliance<S>
     where
         S: Service,
-        Self: StateContainer
+        Self: StateContainer,
     {
         /// Retrieves an immutable reference to service `S`.
         fn get(&self) -> &S;
@@ -57,22 +56,21 @@ pub mod function {
     pub mod error {
         //! Types, to be used within the system, providing context of unexpected behaviour.
 
-        use std::fmt::{self, Display, Debug, Formatter};
+        use std::fmt::{self, Debug, Display, Formatter};
         use std::string::ToString;
 
-        use failure::{Fail, Backtrace, Context};
+        use failure::{Backtrace, Context, Fail};
 
         use super::StateContainer;
-        
+
         /// User facing error type indicating an issue ocurred during evalutation of any
         /// state machine processes.
-        /// 
+        ///
         /// This structure should be used to create an error that is presented to the end-user
-        /// or external systems. It carries a snapshot of the state-machine at the moment 
+        /// or external systems. It carries a snapshot of the state-machine at the moment
         /// the error occurred.
         #[derive(Debug)]
-        pub struct MachineError
-        {
+        pub struct MachineError {
             machine: Box<(Debug + Send + Sync)>,
             inner: Context<ErrorKind>,
         }
@@ -105,23 +103,33 @@ pub mod function {
             LogicError,
         }
 
-        /// Trait facilitating error creation with a snapshot of the state machine 
+        /// Trait facilitating error creation with a snapshot of the state machine
         /// attached.
         pub trait SnapshottedErrorExt<T> {
             /// Converts the Error type of a [`Result`] object into a [`MachineError`].
-            fn with_snapshot<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError> 
-            where 
+            fn context<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError>
+            where
                 M: StateContainer + Clone + Debug + Sync + Send + 'static;
         }
 
-        impl<T, E> SnapshottedErrorExt<T> for Result<T, E> 
-        where 
+        impl<T, E> SnapshottedErrorExt<T> for Result<T, E>
+        where
             E: Fail,
         {
-            /// Builds a [`MachineError`] from a specified [`ErrorKind`]
-            /// providing a snapshot of the current state machine.
-            fn with_snapshot<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError> 
-            where 
+            /// Builds a [`MachineError`] from some error.
+            /// 
+            /// # Constraints
+            /// The error in question MUST implement [`Fail`]!
+            /// 
+            /// # Parameters
+            /// context [`ErrorKind`] - is ment to categorize different errors. Make sure the value
+            /// you choose is semantically correct because that's all the communicated information
+            /// to the end user. 
+            /// machine [´StateContainer`] - is ment to store (effectively through [`Clone`]) a
+            /// snapshot of the state machine onto the heap. The stored state machine will be an exact
+            /// copy of the real one at the moment of failure.
+            fn context<M>(self, context: ErrorKind, machine: &M) -> Result<T, MachineError>
+            where
                 M: StateContainer + Clone + Debug + Sync + Send + 'static,
             {
                 self.map_err(move |failure| {
@@ -138,9 +146,9 @@ pub mod function {
 
         /// Type used for indicating failure to meet specified constraints.
         #[derive(Debug, Fail)]
-        #[fail(display = "Constraint violation detected! Expected `{:}`, provided `{:}`", expected, factual)]
-        pub struct RuntimeConstraintError
-        {
+        #[fail(display = "Constraint violation detected! Expected `{:}`, provided `{:}`",
+               expected, factual)]
+        pub struct RuntimeConstraintError {
             /// Value defining the constraint.
             expected: String,
             /// Value which fails to meet the constraint.
@@ -181,8 +189,8 @@ pub mod function {
         }
 
         /// Unpack a wrapped transaction into an owned value.
-        /// 
-        /// It's of course necessary to 
+        ///
+        /// It's of course necessary to
         pub fn unpack_transaction<T, TC>(tc: TC) -> Result<T, TC::Error>
         where
             T: Transaction + Sized + 'static,
@@ -195,7 +203,7 @@ pub mod function {
 
 pub mod marker {
     //! Primitive traits which can be used as constraints by the core components.
-    //! 
+    //!
     //! Marker Traits are usefull because the can be used as generic bounds. This allows
     //! for decoupling hidden code from developer created code.
     //! Correct understanding of what each trait encompasses is necessary!
@@ -206,23 +214,23 @@ pub mod marker {
     /// so the transactions themselves can be safely stored in memory.
     pub trait TransactionContainer {}
     /// Types which attribute functionality to state machines.
-    /// 
+    ///
     /// A Service is kind-of like a Trait (language item), but is used in a dynamic
     /// way to quickly de-/construct state machines with various functional methods.
     pub trait Service {}
 
     /// (State) Types which are directly contained by the state machine.
-    /// 
+    ///
     /// Note: States can be nested!
     pub trait TopLevelMarker {}
     /// (State) Types which represent a condition for when the state machine itself
     /// should resume execution.
-    /// 
+    ///
     /// The semantics are limited to the set of input events a user can generate.
     pub trait WaitableMarker {}
     /// (State) Types which represent a condition for when the state machine itself
     /// should resume execution.
-    /// 
+    ///
     /// The semantics are limited to the set of action events a user can generate.
     pub trait ActionableMarker {}
 }
@@ -236,7 +244,7 @@ pub mod stm {
 
     /// Types, state machines residing in a certain state, which transform one-sided
     /// into a next Type.
-    /// 
+    ///
     /// A state machine is said to transition from A into B when the current state is A,
     /// a Transaction object for state B is provided and the following transition is
     /// valid [A -> B].
@@ -253,12 +261,12 @@ pub mod stm {
 
     /// Types, state machines residing in a certain state, which transform one-sided
     /// into a next Type. The Transaction object of the previous state is stored for re-use.
-    /// 
-    /// [`PushdownFrom`] is designed to be used together with [`PullupFrom`] because one part of 
+    ///
+    /// [`PushdownFrom`] is designed to be used together with [`PullupFrom`] because one part of
     /// it's functionality is to store the previous state's Transaction onto a stack.
-    /// Generally each [`PushDown`] must be followed with a matching Pullup operation to 
+    /// Generally each [`PushDown`] must be followed with a matching Pullup operation to
     /// correctly push onto and pop from the stackstorage.
-    /// 
+    ///
     /// A state machine is said to pushdown from A into B when the current state is A,
     /// a Transaction object for state B is provided and the following transition is
     /// valid [A -> B].
@@ -275,14 +283,14 @@ pub mod stm {
     }
 
     /// Types, state machines residing in a certain state, which transform one-sided
-    /// into a previous Type. The Transaction object of the next state is loaded 
+    /// into a previous Type. The Transaction object of the next state is loaded
     /// and restored.
-    /// 
-    /// [`PullupFrom`] is designed to be used together with [`PushdownFrom`] because one part of 
+    ///
+    /// [`PullupFrom`] is designed to be used together with [`PushdownFrom`] because one part of
     /// it's functionality is to restore the next state's Transaction from a stack.
-    /// Generally each [`PushDown`] must be followed with a matching Pullup operation to 
+    /// Generally each [`PushDown`] must be followed with a matching Pullup operation to
     /// correctly push onto and pop from the stackstorage.
-    /// 
+    ///
     /// A state machine is said to pullup from B into A when the current state is B
     /// and the following transition is valid [A <- B].
     pub trait PullupFrom<T, TTC>
@@ -294,7 +302,7 @@ pub mod stm {
         <Self::State as State>::Transaction: Transaction + 'static,
     {
         /// Transition from the provided state into the implementing state.
-        /// 
+        ///
         /// # Errors
         /// There is a check at runtime which prevents a Pullup transition if it doesn't match
         /// the correct PushDown transition in a First In, Last Out (FILO) manner.
@@ -306,8 +314,8 @@ pub mod stm {
 pub mod service {
     //! Types which attribute functionality to state machines.
 
-    use marker::{Service, TransactionContainer};
     use self::error::StackPopError;
+    use marker::{Service, TransactionContainer};
 
     pub mod error {
         //! Types for simplifying error handling syntax.
@@ -346,13 +354,11 @@ pub mod service {
         }
 
         /// Remove the element from the top of the Stack.
-        /// 
+        ///
         /// The popped value will match the value which was pushed last
         /// before executing this method.
         pub fn pop(&mut self) -> Result<A, StackPopError> {
-            self.tape
-                .pop()
-                .ok_or(StackPopError)
+            self.tape.pop().ok_or(StackPopError)
         }
     }
 }
@@ -446,7 +452,7 @@ pub mod state {
     ///////////////////////
 
     /// State indicating finalization of the state machine.
-    /// 
+    ///
     /// Finished CAN NOT have any outgoing transitions, since it's intended
     /// to be a terminal state.
     #[derive(Debug, Clone)]
@@ -479,7 +485,7 @@ pub mod transaction {
     impl TransactionContainer for TransactionItem {}
 
     /// Empty Transaction object.
-    /// 
+    ///
     /// The name Epsilon is derived from NFA's where they indicate zero-step transitions
     /// between states.
     /// In this design it's intention is to convey that no Transition information is
@@ -504,13 +510,13 @@ pub mod transaction {
                     let expected = stringify!(TransactionItem::Epsilon);
                     let factual = format!("{:?}", e);
                     Err((expected, factual).into())
-                },
+                }
             }
         }
     }
 
     /// Transaction to be received by states with printing behaviour.
-    /// 
+    ///
     /// This state is pure exemplary, I don't know what else to tell you
     /// about it..
     #[derive(Debug, Clone, Copy)]
@@ -533,7 +539,7 @@ pub mod transaction {
                     let expected = stringify!(TransactionItem::Print);
                     let factual = format!("{:?}", e);
                     Err((expected, factual).into())
-                },
+                }
             }
         }
     }
@@ -541,21 +547,21 @@ pub mod transaction {
 
 use std::marker::PhantomData;
 
-use function::{ServiceCompliance, State, StateContainer};
-use function::error::{MachineError, SnapshottedErrorExt, ErrorKind};
+use function::error::{ErrorKind, MachineError, SnapshottedErrorExt};
 use function::helper::{pack_transaction, unpack_transaction};
+use function::{ServiceCompliance, State, StateContainer};
 use marker::TopLevelMarker;
 use service::StackStorage;
-use stm::{PullupFrom, PushdownFrom, TransitionFrom};
-use transaction::{TransactionItem, Epsilon, PrintTransaction};
 use state::*;
+use stm::{PullupFrom, PushdownFrom, TransitionFrom};
+use transaction::{Epsilon, PrintTransaction, TransactionItem};
 
 /////////////////////
 // (State) Machine //
 /////////////////////
 
 /// The state machine.
-/// 
+///
 /// The developer is encouraged to design this structure in any desired
 /// way by storing services into it's members.
 /// Each state machine MUST have a `state` and `transaction` field AT
@@ -567,12 +573,12 @@ where
 {
     /* Absolute minimum variables */
     /// Field to encode the current state of the machine.
-    /// 
+    ///
     /// This field is present to utilize the type system to statically verify
-    /// legal transitions of the machine. This field has no (/zero) size 
+    /// legal transitions of the machine. This field has no (/zero) size
     /// at runtime.
     pub state: PhantomData<X>,
-    /// Field to store the provided Transaction object as rquired by the 
+    /// Field to store the provided Transaction object as rquired by the
     /// current state.
     pub transaction: X::Transaction,
 
@@ -657,9 +663,11 @@ impl PullupFrom<Machine<Action<Print>>, TransactionItem> for Machine<Wait<Input>
     fn pullup_from(mut old: Machine<Action<Print>>) -> Result<Self, MachineError> {
         // Restore previously stored state.
         let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
-            .pop().with_snapshot(ErrorKind::LogicError, &old)?;
-        let old_transaction = unpack_transaction(old_transaction)
-            .with_snapshot(ErrorKind::ConstraintError, &old)?;
+            .pop()
+            .context(ErrorKind::LogicError, &old)
+            .and_then(|item| {
+                unpack_transaction(item).context(ErrorKind::ConstraintError, &old)
+            })?;
 
         // DBG
         // let old_transaction = Epsilon;
@@ -700,12 +708,15 @@ impl PushdownFrom<Machine<Action<Print>>, TransactionItem> for Machine<Action<Lo
 impl PullupFrom<Machine<Action<Load>>, TransactionItem> for Machine<Action<Print>> {
     fn pullup_from(mut old: Machine<Action<Load>>) -> Result<Self, MachineError> {
         // Restore previously stored state.
-        // let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
-        //     .pop()
-        //     .and_then(unpack_transaction)?;
+        let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
+            .pop()
+            .context(ErrorKind::LogicError, &old)
+            .and_then(|item| {
+                unpack_transaction(item).context(ErrorKind::ConstraintError, &old)
+            })?;
 
         // DBG
-        let old_transaction = PrintTransaction("dbg");
+        // let old_transaction = PrintTransaction("dbg");
 
         // Build new machine.
         Ok(Machine {

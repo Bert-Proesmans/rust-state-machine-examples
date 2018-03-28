@@ -2,11 +2,11 @@ extern crate automaton_test;
 
 use std::marker::PhantomData;
 
-use automaton_test::*;
-use automaton_test::state::*;
 use automaton_test::service::StackStorage;
+use automaton_test::state::*;
 use automaton_test::stm::*;
 use automaton_test::transaction::{Epsilon, PrintTransaction};
+use automaton_test::*;
 
 fn new_machine() -> Machine<Wait<Start>> {
     Machine {
