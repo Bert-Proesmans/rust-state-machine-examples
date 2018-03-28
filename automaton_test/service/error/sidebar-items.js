@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["StackPopError","Specific error thrown when the [`StackStorage`] has no items left and the users coded it to pop another item."]]});
