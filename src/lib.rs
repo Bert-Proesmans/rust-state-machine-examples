@@ -16,6 +16,12 @@
 //! flow.
 //! Only using safe code of-course!
 
+// Notes:
+//- Sized is auto-appended as condition for every type parameter. That makes this special
+//  trait OPT-OUT!
+//  Self MUST STILL be marked as Sized, though!
+//-
+
 #[macro_use]
 extern crate failure;
 
@@ -107,14 +113,14 @@ pub mod function {
         /// attached.
         pub trait SnapshottedErrorExt<T> {
             /// Builds a [`MachineError`] from some error.
-            /// 
+            ///
             /// # Constraints
             /// The error in question MUST implement [`Fail`]!
-            /// 
+            ///
             /// # Parameters
             /// context [`ErrorKind`] - is ment to categorize different errors. Make sure the value
             /// you choose is semantically correct because that's all the communicated information
-            /// to the end user. 
+            /// to the end user.
             /// machine [´StateContainer`] - is ment to store (effectively through [`Clone`]) a
             /// snapshot of the state machine onto the heap. The stored state machine will be an exact
             /// copy of the real one at the moment of failure.
@@ -181,8 +187,8 @@ pub mod function {
         /// Transform a transaction into the wrapping variant.
         pub fn pack_transaction<T, TC>(x: T) -> TC
         where
-            T: Transaction + Into<TC> + Sized + 'static,
-            TC: TransactionContainer + Sized + 'static,
+            T: Transaction + Into<TC> + 'static,
+            TC: TransactionContainer + 'static,
         {
             x.into()
         }
@@ -192,8 +198,8 @@ pub mod function {
         /// It's of course necessary to
         pub fn unpack_transaction<T, TC>(tc: TC) -> Result<T, TC::Error>
         where
-            T: Transaction + Sized + 'static,
-            TC: TransactionContainer + TryInto<T> + Sized + 'static,
+            T: Transaction + 'static,
+            TC: TransactionContainer + TryInto<T> + 'static,
         {
             tc.try_into()
         }
@@ -249,13 +255,38 @@ pub mod stm {
     /// valid [A -> B].
     pub trait TransitionFrom<T>
     where
-        T: StateContainer + Sized + 'static,
-        Self: StateContainer + Sized + 'static,
-        Self::State: State,
-        <Self::State as State>::Transaction: Transaction + Copy,
+        T: StateContainer + 'static,
+        Self: StateContainer + 'static,
+        Self::State: State + 'static,
+        <Self::State as State>::Transaction: Transaction + Copy + 'static,
     {
         /// Transition from the provided state into the implementing state.
         fn transition_from(_: T, _: <Self::State as State>::Transaction) -> Self;
+    }
+
+    /// Syntax simplifying trait in accordance to [`TransitionFrom`].
+    pub trait TransitionInto<T>
+    where
+        T: StateContainer + 'static,
+        Self: StateContainer + 'static,
+        T::State: State + 'static,
+        <T::State as State>::Transaction: Transaction + Copy + 'static,
+    {
+        /// Transition from Self into the desired state.
+        fn transition(self, _: <T::State as State>::Transaction) -> T;
+    }
+
+    impl<T, S> TransitionInto<T> for S
+    where
+        S: StateContainer + 'static,
+        T: TransitionFrom<S> + StateContainer,
+        T::State: State + 'static,
+        <T::State as State>::Transaction: Transaction + Copy + 'static,
+    {
+        fn transition(self, t: <T::State as State>::Transaction) -> T {
+            // self is of type S.
+            T::transition_from(self, t)
+        }
     }
 
     /// Types, state machines residing in a certain state, which transform one-sided
@@ -272,13 +303,40 @@ pub mod stm {
     pub trait PushdownFrom<T, TTC>
     where
         TTC: TransactionContainer + 'static,
-        T: StateContainer + Sized + 'static,
-        Self: StateContainer + ServiceCompliance<StackStorage<TTC>> + Sized + 'static,
-        Self::State: State,
+        T: StateContainer + 'static,
+        Self: StateContainer + ServiceCompliance<StackStorage<TTC>> + 'static,
+        Self::State: State + 'static,
         <Self::State as State>::Transaction: Transaction + Copy + 'static,
     {
         /// Transition from the provided state into the implementing state.
         fn pushdown_from(_: T, _: <Self::State as State>::Transaction) -> Self;
+    }
+
+    /// Syntax simplifying trait in accordance to [`PushdownFrom`].
+    pub trait PushdownInto<T, TTC>
+    where
+        TTC: TransactionContainer + 'static,
+        T: StateContainer + 'static,
+        T::State: State + 'static,
+        <T::State as State>::Transaction: Transaction + Copy + 'static,
+        Self: StateContainer + 'static,
+    {
+        /// Transition from Self into the desired state.
+        fn pushdown(self, _: <T::State as State>::Transaction) -> T;
+    }
+
+    impl<T, TTC, S> PushdownInto<T, TTC> for S
+    where
+        S: StateContainer + 'static,
+        TTC: TransactionContainer + 'static,
+        T: PushdownFrom<S, TTC> + StateContainer + 'static,
+        T::State: State + 'static,
+        <T::State as State>::Transaction: Transaction + Copy + 'static,
+    {
+        fn pushdown(self, t: <T::State as State>::Transaction) -> T {
+            // self is of type S.
+            T::pushdown_from(self, t)
+        }
     }
 
     /// Types, state machines residing in a certain state, which transform one-sided
@@ -295,9 +353,9 @@ pub mod stm {
     pub trait PullupFrom<T, TTC>
     where
         TTC: TransactionContainer + 'static,
-        T: StateContainer + ServiceCompliance<StackStorage<TTC>> + Sized + 'static,
-        Self: Sized + StateContainer + 'static,
-        Self::State: State,
+        T: StateContainer + ServiceCompliance<StackStorage<TTC>> + 'static,
+        Self: StateContainer + Sized + 'static,
+        Self::State: State + 'static,
         <Self::State as State>::Transaction: Transaction + 'static,
     {
         /// Transition from the provided state into the implementing state.
@@ -308,6 +366,34 @@ pub mod stm {
         /// Note: This part CANNOT be statically verified as far as I know?
         fn pullup_from(_: T) -> Result<Self, MachineError>;
     }
+
+    /// Syntax sumplifying trait in accordance to [`PullupFrom`].
+    pub trait PullupInto<T, TTC>
+    where
+        TTC: TransactionContainer + 'static,
+        T: StateContainer + 'static,
+        T::State: State + 'static,
+        <T::State as State>::Transaction: Transaction + 'static,
+        Self: StateContainer + ServiceCompliance<StackStorage<TTC>> + Sized + 'static,
+    {
+        /// Transition from Self into the desired state.
+        fn pullup(self) -> Result<T, MachineError>;
+    }
+
+    impl<T, TTC, S> PullupInto<T, TTC> for S
+    where
+        S: StateContainer + ServiceCompliance<StackStorage<TTC>> + 'static,
+        TTC: TransactionContainer + 'static,
+        T: PullupFrom<S, TTC> + StateContainer + 'static,
+        T::State: State + 'static,
+        <T::State as State>::Transaction: Transaction + Copy + 'static,
+    {
+        fn pullup(self) -> Result<T, MachineError> {
+            // self if of type S.
+            T::pullup_from(self)
+        }
+    }
+
 }
 
 pub mod service {
@@ -664,9 +750,7 @@ impl PullupFrom<Machine<Action<Print>>, TransactionItem> for Machine<Wait<Input>
         let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
             .pop()
             .context(ErrorKind::LogicError, &old)
-            .and_then(|item| {
-                unpack_transaction(item).context(ErrorKind::ConstraintError, &old)
-            })?;
+            .and_then(|item| unpack_transaction(item).context(ErrorKind::ConstraintError, &old))?;
 
         // DBG
         // let old_transaction = Epsilon;
@@ -710,9 +794,7 @@ impl PullupFrom<Machine<Action<Load>>, TransactionItem> for Machine<Action<Print
         let old_transaction = ServiceCompliance::<StackStorage<TransactionItem>>::get_mut(&mut old)
             .pop()
             .context(ErrorKind::LogicError, &old)
-            .and_then(|item| {
-                unpack_transaction(item).context(ErrorKind::ConstraintError, &old)
-            })?;
+            .and_then(|item| unpack_transaction(item).context(ErrorKind::ConstraintError, &old))?;
 
         // DBG
         // let old_transaction = PrintTransaction("dbg");

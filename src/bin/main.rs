@@ -1,5 +1,6 @@
 extern crate automaton_test;
 
+use std::env;
 use std::marker::PhantomData;
 
 use automaton_test::service::StackStorage;
@@ -17,29 +18,29 @@ fn new_machine() -> Machine<Wait<Start>> {
 }
 
 fn main() {
+    // DBG; This will enable Failure to print out full backtraces.
+    // env::set_var("RUST_BACKTRACE", "1");
+
     let start_state = new_machine();
 
     // DBG; The following syntax can/will be made simpler by implementing the TransitionInto-
     // counterpart of TransitionFrom.
-    let input_state: Machine<Wait<Input>> = TransitionFrom::transition_from(start_state, Epsilon);
+    let input_state: Machine<Wait<Input>> = start_state.transition(Epsilon);
 
-    let action_state: Machine<Action<Print>> =
-        PushdownFrom::pushdown_from(input_state, PrintTransaction("Hello"));
+    let action_state: Machine<Action<Print>> = input_state.pushdown(PrintTransaction("Hello"));
 
     println!("Printing transaction: {:?}", action_state.transaction);
 
-    let deep_action_state: Machine<Action<Load>> =
-        PushdownFrom::pushdown_from(action_state, Epsilon);
+    let deep_action_state: Machine<Action<Load>> = action_state.pushdown(Epsilon);
 
     let action_state: Machine<Action<Print>> =
-        PullupFrom::pullup_from(deep_action_state).expect("Transition Error");
+        deep_action_state.pullup().expect("Transition Error");
 
     println!("Validate transaction: {:?}", action_state.transaction);
 
-    let input_state: Machine<Wait<Input>> =
-        PullupFrom::pullup_from(action_state).expect("Transition Error");
+    let input_state: Machine<Wait<Input>> = action_state.pullup().expect("Transition Error");
 
-    let finished_state: Machine<Finished> = TransitionFrom::transition_from(input_state, Epsilon);
+    let finished_state: Machine<Finished> = input_state.transition(Epsilon);
 
     println!("{:?}", finished_state);
 }
